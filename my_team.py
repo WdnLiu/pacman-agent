@@ -123,27 +123,79 @@ class ReflexCaptureAgent(CaptureAgent):
 
 class OffensiveReflexAgent(ReflexCaptureAgent):
     """
-  A reflex agent that seeks food. This is an agent
-  we give you to get an idea of what an offensive agent might look like,
-  but it is by no means the best or only way to build an offensive agent.
-  """
+    A reflex agent that seeks food but will prioritize becoming a Pac-Man
+    and chasing down enemy Pac-Man ghosts or scared ghosts as soon as possible.
+    """
 
     def get_features(self, game_state, action):
+        
         features = util.Counter()
         successor = self.get_successor(game_state, action)
         food_list = self.get_food(successor).as_list()
-        features['successor_score'] = -len(food_list)  # self.getScore(successor)
+        features['successor_score'] = -len(food_list)
+        new_state = successor.get_agent_state(self.index)
+        new_pos = new_state.get_position()
 
         # Compute distance to the nearest food
-
-        if len(food_list) > 0:  # This should always be True,  but better safe than sorry
-            my_pos = successor.get_agent_state(self.index).get_position()
-            min_distance = min([self.get_maze_distance(my_pos, food) for food in food_list])
+        if len(food_list) > 0:
+            min_distance = min([self.get_maze_distance(new_pos, food) for food in food_list])
             features['distance_to_food'] = min_distance
+
+        # Identify if there are enemies nearby
+        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+        ghosts = [a for a in enemies if not a.is_pacman and a.get_position() is not None]
+        scared_ghosts = [g for g in ghosts if g.scared_timer > 0]  # Check for scared ghosts
+        
+        # Compute distance to the nearest ghost if there are any
+        if len(ghosts) > 0:
+            
+            ghost_distances = [self.get_maze_distance(new_pos, ghost.get_position()) for ghost in ghosts]
+            
+            if scared_ghosts:                
+                features['distance_to_ghost'] = 9999  # No mortal ghosts, no need to worry
+                
+            else:
+                features['distance_to_ghost'] = min(ghost_distances)
+
+        else:
+            features['distance_to_ghost'] = 9999  # No ghosts, no need to worry
+            
+        # Discourage stopping
+        if action == Directions.STOP:
+            features['stop'] = 1
+
+        # Discourage reversing direction
+        reverse = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
+        if action == reverse:
+            features['reverse'] = 1
+            
+        if game_state.get_agent_state(self.index).is_pacman and new_state.scared_timer > 0: # Eat the power dot
+            features['eat_power_dot'] = 1
+        elif new_state.is_pacman and new_state.scared_timer > 0:
+            features['becoming_ghost'] = 1  # If already eaten go back and score
+
+
+        # Prioritize returning to base if too close to a ghost
+        if features['distance_to_ghost'] < features['distance_to_food'] and new_state.is_pacman:
+            features['return_to_base'] = 1  # Encourage returning to base if closer to a ghost
+
         return features
 
     def get_weights(self, game_state, action):
-        return {'successor_score': 100, 'distance_to_food': -1}
+        """
+        Assigns weights to the offensive features for evaluation.
+        """
+        return {
+            'successor_score': 50,               # Favor eating food (successor score)
+            'distance_to_food': -1,               # Favor actions closer to food
+            'distance_to_ghost': 5,               # Avoid ghosts unless they are scared
+            'stop': -100,                         # Strongly discourage stopping
+            'reverse': -2,                        # Discourage reversing
+            'return_to_base' : -50,
+            'becoming_ghost': -500,               # Reward for successfully becoming a Ghost and attacking scared ghosts
+            'eat_the_power_dot': 1000 
+        }
+
 
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
