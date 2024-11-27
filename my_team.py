@@ -7,6 +7,7 @@
 # For more info, see http://inst.eecs.berkeley.edu/~cs188/sp09/pacman.html
 
 import random
+import time
 import contest.util as util
 
 from contest.capture_agents import CaptureAgent
@@ -146,7 +147,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         # Favor states where enemies are scared
         features['scared_enemies'] = len(scared_ghosts)
         enemy_pacman = [a for a in enemies if a.is_pacman and a.get_position() is not None]
-        enemy_pacman_nearby = [a for a in enemy_pacman if self.get_maze_distance(new_pos, a.get_position()) <= 10]
+        enemy_pacman_nearby = [a for a in enemy_pacman if self.get_maze_distance(new_pos, a.get_position()) <= 5]
 
         if not new_state.is_pacman and len(enemy_pacman_nearby) > 0:
             if enemy_pacman_nearby:
@@ -156,7 +157,6 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                 ]
                 features['chase_enemy_pacman'] = -min(pacman_distances)                
                 return features  # Skip other computations to focus on chasing
-
 
         # Compute distance to the nearest food
         if len(food_list) > 0:
@@ -227,7 +227,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
                 home_positions.append((mid_x, y))
 
         return home_positions
-      
+
 class DefensiveReflexAgent(ReflexCaptureAgent):
     """
     A reflex agent that focuses on defending its territory by hunting invaders (enemy Pac-Men)
@@ -290,14 +290,25 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
     def get_patrol_points(self, game_state):
         """
         Determines key patrol points on the defensive side.
-        These are typically entry points where invaders are likely to appear.
+        Patrols the three nearest columns to the midline and also considers horizontal movement.
         """
         width, height = game_state.data.layout.width, game_state.data.layout.height
         mid_x = width // 2 - 1 if self.red else width // 2  # Adjust for red/blue sides
+
+        # Include the three nearest columns to the midline
+        patrol_columns = [mid_x - 2, mid_x, mid_x + 2]
         patrol_points = []
 
+        # Add patrol points around the midline, including horizontal and vertical movement
+        for x in patrol_columns:
+            for y in range(height):
+                if not game_state.data.layout.is_wall((x, y)):  # Check for walls
+                    patrol_points.append((x, y))
+                    
+        # Additionally, move left and right across rows to cover more horizontal space
         for y in range(height):
-            if not game_state.data.layout.is_wall((mid_x, y)):
-                patrol_points.append((mid_x, y))
+            for x in range(mid_x - 2, mid_x + 3):  # Scan horizontally
+                if 0 <= x < width and not game_state.data.layout.is_wall((x, y)):
+                    patrol_points.append((x, y))
 
         return patrol_points
