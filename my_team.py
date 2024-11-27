@@ -123,8 +123,8 @@ class ReflexCaptureAgent(CaptureAgent):
 
 class OffensiveReflexAgent(ReflexCaptureAgent):
     """
-    A reflex agent that seeks food but will prioritize becoming a Pac-Man
-    and chasing down enemy Pac-Man ghosts or scared ghosts as soon as possible.
+    A reflex agent that seeks food and strategically returns to its side
+    to deposit points after collecting dots.
     """
 
     def get_features(self, game_state, action):
@@ -132,34 +132,34 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         features = util.Counter()
         successor = self.get_successor(game_state, action)
         food_list = self.get_food(successor).as_list()
-        features['successor_score'] = -len(food_list)
         new_state = successor.get_agent_state(self.index)
         new_pos = new_state.get_position()
+        # Food collected by the agent
+        carried_food = new_state.num_carrying
+        features['successor_score'] = -len(food_list)
+        features['carrying_food'] = carried_food
+
 
         # Compute distance to the nearest food
         if len(food_list) > 0:
-            min_distance = min([self.get_maze_distance(new_pos, food) for food in food_list])
-            features['distance_to_food'] = min_distance
-
-        # Identify if there are enemies nearby
-        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
-        ghosts = [a for a in enemies if not a.is_pacman and a.get_position() is not None]
-        scared_ghosts = [g for g in ghosts if g.scared_timer > 0]  # Check for scared ghosts
-        
-        # Compute distance to the nearest ghost if there are any
-        if len(ghosts) > 0:
-            
-            ghost_distances = [self.get_maze_distance(new_pos, ghost.get_position()) for ghost in ghosts]
-            
-            if scared_ghosts:                
-                features['distance_to_ghost'] = 9999  # No mortal ghosts, no need to worry
-                
-            else:
-                features['distance_to_ghost'] = min(ghost_distances)
-
+            food_distances = [self.get_maze_distance(new_pos, food) for food in food_list]
+            min_distance_to_food = min(food_distances)
+            features['distance_to_food'] = min_distance_to_food
         else:
-            features['distance_to_ghost'] = 9999  # No ghosts, no need to worry
-            
+            features['distance_to_food'] = 9999
+
+        # Count food within a close range (e.g., 3 spaces)
+        nearby_food = [food for food in food_list if self.get_maze_distance(new_pos, food) <= 3]
+        features['nearby_food_count'] = len(nearby_food)
+        
+        # If carrying food, prioritize returning to the home side
+        if carried_food > 0:
+            home_positions = self.get_home_positions(game_state)
+            min_home_distance = min([self.get_maze_distance(new_pos, home) for home in home_positions])
+            features['distance_to_home'] = min_home_distance
+        else:
+            features['distance_to_home'] = 0  # No need to prioritize home if no food is carried
+
         # Discourage stopping
         if action == Directions.STOP:
             features['stop'] = 1
@@ -168,16 +168,17 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         reverse = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
         if action == reverse:
             features['reverse'] = 1
-            
-        if game_state.get_agent_state(self.index).is_pacman and new_state.scared_timer > 0: # Eat the power dot
-            features['eat_power_dot'] = 1
-        elif new_state.is_pacman and new_state.scared_timer > 0:
-            features['becoming_ghost'] = 1  # If already eaten go back and score
 
+        # Identify if there are enemies nearby
+        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+        ghosts = [a for a in enemies if not a.is_pacman and a.get_position() is not None]
 
-        # Prioritize returning to base if too close to a ghost
-        if features['distance_to_ghost'] < features['distance_to_food'] and new_state.is_pacman:
-            features['return_to_base'] = 1  # Encourage returning to base if closer to a ghost
+        # Compute distance to the nearest ghost if there are any
+        if len(ghosts) > 0:
+            ghost_distances = [self.get_maze_distance(new_pos, ghost.get_position()) for ghost in ghosts]
+            features['distance_to_ghost'] = min(ghost_distances)
+        else:
+            features['distance_to_ghost'] = 9999  # No ghosts, no need to worry
 
         return features
 
@@ -186,18 +187,27 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         Assigns weights to the offensive features for evaluation.
         """
         return {
-            'successor_score': 50,               # Favor eating food (successor score)
-            'distance_to_food': -1,               # Favor actions closer to food
-            'distance_to_ghost': 5,               # Avoid ghosts unless they are scared
-            'stop': -100,                         # Strongly discourage stopping
-            'reverse': -2,                        # Discourage reversing
-            'return_to_base' : -50,
-            'becoming_ghost': -500,               # Reward for successfully becoming a Ghost and attacking scared ghosts
-            'eat_the_power_dot': 1000 
+            'successor_score': 50,          # Favor eating food (successor score)
+            'distance_to_food': -1,         # Favor actions closer to food
+            'distance_to_home': -2,         # Strongly favor returning home when carrying food
+            'distance_to_ghost': 2,         # Avoid ghosts unless they are scared
+            'stop': -100,                   # Strongly discourage stopping
+            'reverse': -10                  # Discourage reversing
         }
 
+    def get_home_positions(self, game_state):
+        """
+        Returns the list of valid positions on the agent's home side.
+        """
+        width, height = game_state.data.layout.width, game_state.data.layout.height
+        mid_x = width // 2 - 1 if self.red else width // 2  # Adjust for red/blue sides
+        home_positions = []
 
+        for y in range(height):
+            if not game_state.data.layout.is_wall((mid_x, y)):
+                home_positions.append((mid_x, y))
 
+        return home_positions
 class DefensiveReflexAgent(ReflexCaptureAgent):
     """
     A reflex agent that focuses on defending its territory by hunting invaders (enemy Pac-Men)
