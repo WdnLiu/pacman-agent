@@ -139,6 +139,24 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         features['successor_score'] = -len(food_list)
         features['carrying_food'] = carried_food        
         curr_state = game_state.get_agent_state(self.index)
+        # Identify if there are enemies nearby
+        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
+        ghosts = [a for a in enemies if not a.is_pacman and a.get_position() is not None]
+        scared_ghosts = [g for g in ghosts if g.scared_timer > 0]
+        # Favor states where enemies are scared
+        features['scared_enemies'] = len(scared_ghosts)
+        enemy_pacman = [a for a in enemies if a.is_pacman and a.get_position() is not None]
+        enemy_pacman_nearby = [a for a in enemy_pacman if self.get_maze_distance(new_pos, a.get_position()) <= 10]
+
+        if not new_state.is_pacman and len(enemy_pacman_nearby) > 0:
+            if enemy_pacman_nearby:
+                # Chase the nearest enemy Pac-Man
+                pacman_distances = [
+                    self.get_maze_distance(new_pos, a.get_position()) for a in enemy_pacman_nearby
+                ]
+                features['chase_enemy_pacman'] = -min(pacman_distances)                
+                return features  # Skip other computations to focus on chasing
+
 
         # Compute distance to the nearest food
         if len(food_list) > 0:
@@ -169,13 +187,6 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
         if action == reverse:
             features['reverse'] = 1
 
-        # Identify if there are enemies nearby
-        enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
-        ghosts = [a for a in enemies if not a.is_pacman and a.get_position() is not None]
-        scared_ghosts = [g for g in ghosts if g.scared_timer > 0]
-        # Favor states where enemies are scared
-        features['scared_enemies'] = len(scared_ghosts)
-
         # Compute distance to the nearest ghost if there are any
         if len(ghosts) > 0 and len(scared_ghosts) == 0:
             ghost_distances = [self.get_maze_distance(new_pos, ghost.get_position()) for ghost in ghosts]
@@ -198,8 +209,9 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
             'distance_to_home': -2,         # Strongly favor returning home when carrying food
             'distance_to_ghost': 2,         # Avoid ghosts unless they are scared
             'stop': -100,                   # Strongly discourage stopping
-            'scared_enemies': 100,          # Strongly favor states with scared enemies
-            'reverse': -2                   # Discourage reversing
+            'scared_enemies': 500,          # Strongly favor states with scared enemies
+            'reverse': -2,                  # Discourage reversing
+            'chase_enemy_pacman': 200       # Prioritize chasing enemy Pac-Men on home side
         }
 
     def get_home_positions(self, game_state):
