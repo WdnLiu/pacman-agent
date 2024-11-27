@@ -148,36 +148,74 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
 
 class DefensiveReflexAgent(ReflexCaptureAgent):
     """
-    A reflex agent that keeps its side Pacman-free. Again,
-    this is to give you an idea of what a defensive agent
-    could be like.  It is not the best or only way to make
-    such an agent.
+    A reflex agent that focuses on defending its territory by hunting invaders (enemy Pac-Men)
+    and patrolling when no invaders are visible.
     """
 
     def get_features(self, game_state, action):
+        """
+        Computes features specific to a defensive strategy.
+        """
         features = util.Counter()
         successor = self.get_successor(game_state, action)
+        new_state = successor.get_agent_state(self.index)
+        new_pos = new_state.get_position()
 
-        my_state = successor.get_agent_state(self.index)
-        my_pos = my_state.get_position()
-
-        # Computes whether we're on defense (1) or offense (0)
+        # On defense: checks if the agent is a Pac-Man or not
         features['on_defense'] = 1
-        if my_state.is_pacman: features['on_defense'] = 0
+        if new_state.is_pacman:
+            features['on_defense'] = 0
 
-        # Computes distance to invaders we can see
+        # Track visible invaders
         enemies = [successor.get_agent_state(i) for i in self.get_opponents(successor)]
         invaders = [a for a in enemies if a.is_pacman and a.get_position() is not None]
         features['num_invaders'] = len(invaders)
-        if len(invaders) > 0:
-            dists = [self.get_maze_distance(my_pos, a.get_position()) for a in invaders]
-            features['invader_distance'] = min(dists)
 
-        if action == Directions.STOP: features['stop'] = 1
-        rev = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
-        if action == rev: features['reverse'] = 1
+        # Compute distance to invaders if any exist
+        if len(invaders) > 0:
+            invader_distances = [self.get_maze_distance(new_pos, invader.get_position()) for invader in invaders]
+            features['invader_distance'] = min(invader_distances)
+        else:
+            # Patrol key points when no invaders are visible
+            patrol_points = self.get_patrol_points(game_state)
+            min_patrol_distance = min([self.get_maze_distance(new_pos, point) for point in patrol_points])
+            features['patrol_distance'] = min_patrol_distance
+
+        # Discourage stopping
+        if action == Directions.STOP:
+            features['stop'] = 1
+
+        # Discourage reversing direction
+        reverse = Directions.REVERSE[game_state.get_agent_state(self.index).configuration.direction]
+        if action == reverse:
+            features['reverse'] = 1
 
         return features
 
     def get_weights(self, game_state, action):
-        return {'num_invaders': -1000, 'on_defense': 100, 'invader_distance': -10, 'stop': -100, 'reverse': -2}
+        """
+        Assigns weights to the defensive features for evaluation.
+        """
+        return {
+            'num_invaders': -1000,      # Strongly prioritize targeting invaders
+            'on_defense': 100,          # Encourage staying on defense
+            'invader_distance': -10,    # Get closer to visible invaders
+            'patrol_distance': -5,      # Patrol when no invaders are visible
+            'stop': -100,               # Discourage stopping
+            'reverse': -2               # Mildly discourage reversing
+        }
+
+    def get_patrol_points(self, game_state):
+        """
+        Determines key patrol points on the defensive side.
+        These are typically entry points where invaders are likely to appear.
+        """
+        width, height = game_state.data.layout.width, game_state.data.layout.height
+        mid_x = width // 2 - 1 if self.red else width // 2  # Adjust for red/blue sides
+        patrol_points = []
+
+        for y in range(height):
+            if not game_state.data.layout.is_wall((mid_x, y)):
+                patrol_points.append((mid_x, y))
+
+        return patrol_points
