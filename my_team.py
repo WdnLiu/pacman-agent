@@ -172,7 +172,7 @@ class OffensiveReflexAgent(ReflexCaptureAgent):
             features['distance_to_food'] = 9999
 
         # Count food within a close range (e.g., 3 spaces)
-        look_for_food = max(10 - carried_food * 2, 3)
+        look_for_food = max(8 - carried_food * 2, 3)
         if (len(ghosts) > 0 and min(ghost_distances) < 5):
             look_for_food = 0
         nearby_food = [food for food in food_list if self.get_maze_distance(new_pos, food) <= look_for_food]
