@@ -309,7 +309,7 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
         mid_x = width // 2 - 1 if self.red else width // 2  # Adjust for red/blue sides
 
         # Include the three nearest columns to the midline
-        patrol_columns = [mid_x - 2, mid_x, mid_x + 2]
+        patrol_columns = [mid_x - 3, mid_x, mid_x + 4]
         patrol_points = []
 
         # Add patrol points around the midline, including horizontal and vertical movement
@@ -320,7 +320,7 @@ class DefensiveReflexAgent(ReflexCaptureAgent):
                     
         # Additionally, move left and right across rows to cover more horizontal space
         for y in range(height):
-            for x in range(mid_x - 2, mid_x + 3):  # Scan horizontally
+            for x in range(mid_x - 3, mid_x + 4):  # Scan horizontally
                 if 0 <= x < width and not game_state.data.layout.is_wall((x, y)):
                     patrol_points.append((x, y))
 
